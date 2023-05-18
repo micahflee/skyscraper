@@ -117,7 +117,10 @@ async function upsertPost(postData) {
     yargs(hideBin(process.argv))
         // List profiles
         .command('list-profiles', 'List profiles', {}, async function () {
-            console.log('list-profiles: Not implemented');
+            const profiles = await Profile.findAll();
+            for (let profile of profiles) {
+                console.log(`${profile.handle} (${profile.display_name})`);
+            }
         })
 
         // Fetch a profile
