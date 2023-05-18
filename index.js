@@ -105,6 +105,15 @@ async function upsertPost(postData) {
     return post;
 }
 
+async function displayPost(post) {
+    let profile = await Profile.findByPk(post.dataValues.profile_id);
+    console.log(chalk.bold(profile.dataValues.handle) + `: ${post.dataValues.text}`);
+    console.log(chalk.dim(`${post.dataValues.created_at}`));
+    console.log(chalk.dim(`Replies: ${post.dataValues.reply_count}, Reposts: ${post.dataValues.repost_count}, Likes: ${post.dataValues.like_count}`));
+    console.log(chalk.blueBright.underline(post.dataValues.url));
+    console.log();
+}
+
 (async () => {
     try {
         await agent.login({
@@ -198,12 +207,31 @@ async function upsertPost(postData) {
             console.log(`Found ${posts.length}\n`);
 
             for (let post of posts) {
-                let profile = await Profile.findByPk(post.dataValues.profile_id);
+                await displayPost(post);
+            }
+        })
 
-                console.log(chalk.dim(`${post.dataValues.created_at}`));
-                console.log(chalk.bold(profile.dataValues.handle) + `: ${post.dataValues.text}`);
-                console.log(chalk.blueBright.underline(post.dataValues.url));
-                console.log();
+        // Read posts from a user sequentially
+        .command('read-posts [username]', 'Read posts sequentially', {}, async function (argv) {
+            const profile = await Profile.findOne({
+                where: {
+                    handle: argv.username
+                }
+            });
+
+            const posts = await Post.findAll({
+                where: {
+                    profile_id: profile.id
+                },
+                order: [
+                    ['created_at', 'ASC']
+                ]
+            });
+
+            console.log(`Found ${posts.length}\n`);
+
+            for (let post of posts) {
+                await displayPost(post);
             }
         })
 
