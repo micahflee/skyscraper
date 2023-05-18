@@ -40,15 +40,15 @@ Profile.init({
     },
     follows_count: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
     },
     followers_count: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
     },
     posts_count: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
     },
     indexed_at: {
         type: DataTypes.DATE,
@@ -82,10 +82,6 @@ Post.init({
         type: DataTypes.STRING,
         allowNull: false,
         unique: true,
-    },
-    author_did: {
-        type: DataTypes.STRING,
-        allowNull: false,
     },
     text: {
         type: DataTypes.STRING,
