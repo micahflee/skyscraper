@@ -2,12 +2,14 @@
 import fetch from 'node-fetch';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+import chalk from 'chalk';
 
 import pkg from '@atproto/api';
 const { BskyAgent } = pkg;
 
 global.fetch = fetch;
 
+import { Op } from 'sequelize';
 import database from './database.js';
 const { Profile, Post } = database;
 
@@ -88,7 +90,7 @@ async function upsertPost(postData) {
             indexed_at: postData.indexedAt,
             url: await urlFromUri(postData.author.handle, postData.uri)
         });
-        console.log(`New post created with URL: ${postData.url}`);
+        console.log(`New post created with URL: ${post.url}`);
     } else {
         // Post exists, update it
         await post.update({
@@ -97,7 +99,7 @@ async function upsertPost(postData) {
             like_count: postData.likeCount,
             indexed_at: postData.indexedAt,
         });
-        console.log(`Existing post updated with URL: ${postData.url}`);
+        console.log(`Existing post updated with URL: ${post.url}`);
     }
 
     return post;
@@ -176,7 +178,33 @@ async function upsertPost(postData) {
                 type: 'string'
             }
         }, async function (argv) {
-            console.log(`search: Not implemented. Username: ${argv.username}, Query: ${argv.query}`);
+            let sqlQuery = {
+                where: {
+                    text: {
+                        [Op.like]: `%${argv.query}%`
+                    }
+                }
+            };
+            if (argv.username) {
+                sqlQuery.include = [{
+                    model: Profile,
+                    where: {
+                        handle: argv.username
+                    }
+                }];
+            }
+            const posts = await Post.findAll(sqlQuery);
+
+            console.log(`Found ${posts.length}\n`);
+
+            for (let post of posts) {
+                let profile = await Profile.findByPk(post.dataValues.profile_id);
+
+                console.log(chalk.dim(`${post.dataValues.created_at}`));
+                console.log(chalk.bold(profile.dataValues.handle) + `: ${post.dataValues.text}`);
+                console.log(chalk.blueBright.underline(post.dataValues.url));
+                console.log();
+            }
         })
 
         .demandCommand(1, 'You need at least one command before moving on')
