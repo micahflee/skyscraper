@@ -1,0 +1,21 @@
+# Dependencies
+/node_modules
+
+# Build
+/dist
+
+# dotenv environment variables file
+.env
+
+# IDEs and text editors
+/.vscode
+/.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw*
+
+# OS files
+.DS_Store
+Thumbs.db

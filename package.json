@@ -1,0 +1,17 @@
+{
+  "name": "skyscraper",
+  "version": "1.0.0",
+  "description": "Scrape posts from Bluesky, store them in a local database, and search them.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@atproto/api": "^0.3.4",
+    "yargs": "^17.7.2"
+  },
+  "bin": "./index.js"
+}
