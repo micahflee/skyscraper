@@ -19,3 +19,6 @@
 # OS files
 .DS_Store
 Thumbs.db
+
+# Skyscraper database
+skyscraper.sqlite
