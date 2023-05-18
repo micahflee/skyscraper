@@ -8,7 +8,8 @@ let isDatabaseNew = !fs.existsSync(databaseFileName);
 // Create a Sequelize instance
 const sequelize = new Sequelize({
     dialect: 'sqlite',
-    storage: databaseFileName
+    storage: databaseFileName,
+    logging: false,
 });
 
 // Define the Profile model
@@ -59,11 +60,73 @@ Profile.init({
     timestamps: false,
 });
 
-// If the database file didn't exist, create the Profile table
+// Define the Post model
+class Post extends Model { }
+
+Post.init({
+    id: {
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
+    },
+    profile_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+    },
+    uri: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
+    },
+    cid: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
+    },
+    author_did: {
+        type: DataTypes.STRING,
+        allowNull: false,
+    },
+    text: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+    created_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+    },
+    reply_count: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+    },
+    repost_count: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+    },
+    like_count: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+    },
+    indexed_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+    },
+    url: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
+    },
+}, {
+    sequelize,
+    modelName: 'Post',
+    timestamps: false,
+});
+
+// If the database file didn't exist, create the tables
 if (isDatabaseNew) {
     (async () => {
         await sequelize.sync();
     })();
 }
 
-export default Profile;
+export default { Profile, Post };

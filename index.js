@@ -8,7 +8,7 @@ const { BskyAgent } = pkg;
 
 global.fetch = fetch;
 
-import Profile from './database.js';
+import { Profile, Post } from './database.js';
 
 // Check if environment variables are defined
 if (!process.env.BLUESKY_USERNAME || !process.env.BLUESKY_PASSWORD) {
@@ -80,7 +80,30 @@ const agent = new BskyAgent({ service: 'https://bsky.social' });
                 console.log(`Existing profile updated for ${argv.username}`);
             }
 
-            console.log(profile);
+            // Load all of the profile's posts
+            let posts = [];
+            let cursor = null;
+            while (true) {
+                try {
+                    // Make the API request
+                    let params = { actor: profile.handle, limit: 100 }
+                    if (cursor) {
+                        params.cursor = cursor;
+                    }
+                    const ret = await agent.getAuthorFeed(params);
+                    posts = ret.data.feed;
+                    cursor = ret.data.cursor;
+                    console.log(`Saving ${posts.length} posts`);
+                    console.log(posts[0])
+
+                    if (!cursor) {
+                        break;
+                    }
+                } catch (error) {
+                    console.error(error);
+                    return;
+                }
+            }
         })
 
 
