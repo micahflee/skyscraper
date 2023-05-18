@@ -1,7 +1,12 @@
 #!/usr/bin/env node
-const yargs = require('yargs');
-const { hideBin } = require('yargs/helpers');
-const { BskyAgent } = require('@atproto/api');
+import fetch from 'node-fetch';
+import yargs from 'yargs';
+import { hideBin } from 'yargs/helpers';
+
+import pkg from '@atproto/api';
+const { BskyAgent } = pkg;
+
+global.fetch = fetch;
 
 // Check if environment variables are defined
 if (!process.env.BLUESKY_USERNAME || !process.env.BLUESKY_PASSWORD) {
