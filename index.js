@@ -282,6 +282,37 @@ async function displayPost(post) {
             }
         })
 
+        // Fetch all profiles
+        .command('fetch-all', 'Fetch all profiles', {}, async function (argv) {
+            let ret;
+            let repos = [];
+            let cursor = null;
+            while (true) {
+                let params = { limit: 1000 };
+                if (cursor) {
+                    params.cursor = cursor;
+                }
+                let ret = await agent.com.atproto.sync.listRepos(params);
+                repos = ret.data.repos;
+                cursor = ret.data.cursor;
+                if (!cursor) {
+                    break;
+                }
+
+                // Add the profiles to the database
+                for (let repo of repos) {
+                    // Get the user's handle
+                    ret = await agent.com.atproto.repo.describeRepo({ repo: repo.did });
+                    let handle = ret.data.handle;
+
+                    // Get the users's profile and add to the database
+                    ret = await agent.getProfile({ actor: handle });
+                    let profile = await upsertProfile(ret.data);
+                    console.log(`Added ${profile.handle}`);
+                }
+            }
+        })
+
         .demandCommand(1, 'You need at least one command before moving on')
         .help()
         .argv;
