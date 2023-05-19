@@ -187,22 +187,34 @@ async function displayPost(post) {
                 type: 'string'
             }
         }, async function (argv) {
-            let sqlQuery = {
-                where: {
-                    text: {
-                        [Op.like]: `%${argv.query}%`
-                    }
+            // Construct a where clause for the search query
+            let whereClause = {
+                text: {
+                    [Op.like]: `%${argv.query}%`
                 }
             };
+
+            // If a username is provided, find the corresponding profile
             if (argv.username) {
-                sqlQuery.include = [{
-                    model: Profile,
-                    where: {
-                        handle: argv.username
-                    }
-                }];
+                const profile = await Profile.findOne({
+                    where: { handle: argv.username }
+                });
+
+                // If the profile exists, add profile_id to the where clause
+                if (profile) {
+                    whereClause['profile_id'] = profile.id;
+                } else {
+                    // If no such profile exists, return an empty array
+                    console.log(`No profile found for username ${username}`);
+                    return;
+                }
             }
-            const posts = await Post.findAll(sqlQuery);
+
+            // Execute the search query
+            const posts = await Post.findAll({
+                where: whereClause,
+                order: [['created_at', 'ASC']]
+            });
 
             console.log(`Found ${posts.length}\n`);
 
@@ -213,19 +225,10 @@ async function displayPost(post) {
 
         // Read posts from a user sequentially
         .command('read-posts [username]', 'Read posts sequentially', {}, async function (argv) {
-            const profile = await Profile.findOne({
-                where: {
-                    handle: argv.username
-                }
-            });
-
+            const profile = await Profile.findOne({ where: { handle: argv.username } });
             const posts = await Post.findAll({
-                where: {
-                    profile_id: profile.id
-                },
-                order: [
-                    ['created_at', 'ASC']
-                ]
+                where: { profile_id: profile.id },
+                order: [['created_at', 'ASC']]
             });
 
             console.log(`Found ${posts.length}\n`);
