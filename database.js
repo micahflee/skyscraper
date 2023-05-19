@@ -7,122 +7,122 @@ let isDatabaseNew = !fs.existsSync(databaseFileName);
 
 // Create a Sequelize instance
 const sequelize = new Sequelize({
-    dialect: 'sqlite',
-    storage: databaseFileName,
-    logging: false,
+  dialect: 'sqlite',
+  storage: databaseFileName,
+  logging: false,
 });
 
 // Define the Profile model
 class Profile extends Model { }
 
 Profile.init({
-    id: {
-        type: DataTypes.INTEGER,
-        autoIncrement: true,
-        primaryKey: true,
-    },
-    did: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        unique: true,
-    },
-    handle: {
-        type: DataTypes.STRING,
-        allowNull: false,
-    },
-    display_name: {
-        type: DataTypes.STRING,
-        allowNull: true,
-    },
-    description: {
-        type: DataTypes.STRING,
-        allowNull: true,
-    },
-    follows_count: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-    },
-    followers_count: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-    },
-    posts_count: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-    },
-    indexed_at: {
-        type: DataTypes.DATE,
-        allowNull: false,
-    },
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true,
+  },
+  did: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+  },
+  handle: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  display_name: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  description: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  follows_count: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  followers_count: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  posts_count: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  indexed_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
 }, {
-    sequelize,
-    modelName: 'Profile',
-    timestamps: false,
+  sequelize,
+  modelName: 'Profile',
+  timestamps: false,
 });
 
 // Define the Post model
 class Post extends Model { }
 
 Post.init({
-    id: {
-        type: DataTypes.INTEGER,
-        autoIncrement: true,
-        primaryKey: true,
-    },
-    profile_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-    },
-    uri: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        unique: true,
-    },
-    cid: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        unique: true,
-    },
-    text: {
-        type: DataTypes.STRING,
-        allowNull: true,
-    },
-    created_at: {
-        type: DataTypes.DATE,
-        allowNull: false,
-    },
-    reply_count: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-    },
-    repost_count: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-    },
-    like_count: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-    },
-    indexed_at: {
-        type: DataTypes.DATE,
-        allowNull: false,
-    },
-    url: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        unique: true,
-    },
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true,
+  },
+  profile_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  uri: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+  },
+  cid: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+  },
+  text: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  created_at: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  reply_count: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  repost_count: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  like_count: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  indexed_at: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  url: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+  },
 }, {
-    sequelize,
-    modelName: 'Post',
-    timestamps: false,
+  sequelize,
+  modelName: 'Post',
+  timestamps: false,
 });
 
 // If the database file didn't exist, create the tables
 if (isDatabaseNew) {
-    (async () => {
-        await sequelize.sync();
-    })();
+  (async () => {
+    await sequelize.sync();
+  })();
 }
 
 export default { Profile, Post };
