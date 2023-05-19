@@ -3,6 +3,7 @@ import fetch from 'node-fetch';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
+import ProgressBar from 'progress';
 
 import pkg from '@atproto/api';
 const { BskyAgent } = pkg;
@@ -52,11 +53,11 @@ async function upsertProfile(profileData) {
     if (!profile) {
         // Profile does not exist, create a new one
         profile = await Profile.create(data);
-        console.log(`New profile created for ${profileData.did}`);
+        console.log(`New profile created for ${profileData.handle}`);
     } else {
         // Profile exists, update it
         await profile.update(data);
-        console.log(`Existing profile updated for ${profileData.did}`);
+        console.log(`Existing profile updated for ${profileData.handle}`);
     }
 
     return profile;
@@ -285,7 +286,9 @@ async function displayPost(post) {
         // Fetch all profiles
         .command('fetch-all', 'Fetch all profiles', {}, async function (argv) {
             let ret;
-            let repos = [];
+
+            // First, run sync.listRepos to get all of the DIDs
+            let repo_dids = [];
             let cursor = null;
             while (true) {
                 let params = { limit: 1000 };
@@ -293,23 +296,39 @@ async function displayPost(post) {
                     params.cursor = cursor;
                 }
                 let ret = await agent.com.atproto.sync.listRepos(params);
-                repos = ret.data.repos;
                 cursor = ret.data.cursor;
                 if (!cursor) {
                     break;
                 }
 
-                // Add the profiles to the database
-                for (let repo of repos) {
-                    // Get the user's handle
-                    ret = await agent.com.atproto.repo.describeRepo({ repo: repo.did });
-                    let handle = ret.data.handle;
-
-                    // Get the users's profile and add to the database
-                    ret = await agent.getProfile({ actor: handle });
-                    let profile = await upsertProfile(ret.data);
-                    console.log(`Added ${profile.handle}`);
+                for (let repo of ret.data.repos) {
+                    // Add repo.did to repo_dids if it's not already there
+                    if (!repo_dids.includes(repo.did))
+                        repo_dids.push(repo.did);
                 }
+                console.log("Found " + repo_dids.length + " repos ...");
+            }
+            console.log("Found " + repo_dids.length + " repos");
+
+            // Create a new progress bar for fetching handles
+            let bar = new ProgressBar(':bar :current/:total', { total: repo_dids.length });
+
+            // Next, get user handles for all repos based on their DIDs
+            let handles = [];
+            for (let repo_did of repo_dids) {
+                ret = await agent.com.atproto.repo.describeRepo({ repo: repo_did });
+                handles.push(ret.data.handle);
+                bar.tick(); // Update the progress bar
+            }
+
+            // Create a new progress bar for fetching profiles
+            bar = new ProgressBar(':bar :current/:total', { total: handles.length });
+
+            // Finally, get the profiles for all handles
+            for (let handle of handles) {
+                ret = await agent.getProfile({ actor: handle });
+                let profile = await upsertProfile(ret.data);
+                bar.tick(); // Update the progress bar
             }
         })
 
