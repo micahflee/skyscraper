@@ -30,6 +30,23 @@ async function urlFromUri(username, uri) {
     return `https://bsky.app/profile/${username}/post/${lastPart}`;
 }
 
+// Get a profile by DID
+async function getProfileByDid(did) {
+    try {
+        let profile = await Profile.findOne({
+            where: {
+                did: {
+                    [Op.eq]: did
+                }
+            }
+        });
+        return profile;
+    } catch (error) {
+        console.error(`Error getting profile by DID ${did}: ${error.message}`);
+        throw error;
+    }
+}
+
 // Insert or update a profile
 async function upsertProfile(profileData) {
     // Check if profile already exists
@@ -119,6 +136,224 @@ async function displayPost(post) {
     console.log();
 }
 
+// Commands
+
+async function listProfiles() {
+    const profiles = await Profile.findAll();
+    for (let profile of profiles) {
+        console.log(`${profile.handle} (${profile.display_name})`);
+    }
+}
+
+async function fetchProfile(argv) {
+    console.log(`Loading profile: ${argv.username}`);
+    let profileData = null;
+
+    // Load the profile from the API
+    try {
+        const ret = await agent.getProfile({ actor: argv.username });
+        profileData = ret.data;
+    } catch (error) {
+        console.error(`Error: Failed to fetch user ${argv.username}`);
+        return;
+    }
+
+    // Add the profile to the database
+    let profile = await upsertProfile(profileData);
+
+    if (argv.verbose) {
+        console.log(profile.dataValues);
+    }
+
+    if (argv.connections) {
+        const followsRes = await agent.getFollows({ actor: argv.username });
+        const followersRes = await agent.getFollowers({ actor: argv.username });
+
+        const followDIDs = [];
+        for (let i = 0; i < followsRes.data.follows.length; i++) {
+            const f = followsRes.data.follows[i];
+            if (argv.verbose) {
+                console.log(f);
+            }
+            await upsertProfile(f);
+            followDIDs.push(f.did);
+        }
+
+        const followerDIDs = [];
+        for (let i = 0; i < followersRes.data.followers.length; i++) {
+            const f = followersRes.data.followers[i];
+            if (argv.verbose) {
+                console.log(f);
+            }
+            await upsertProfile(f);
+            followerDIDs.push(f.did);
+        }
+
+    }
+
+    // Load all of the profile's posts
+    let posts = [];
+    let cursor = null;
+    while (!argv.no_posts && true) {
+        try {
+            // Make the API request
+            let params = { actor: profile.handle, limit: 100 }
+            if (cursor) {
+                params.cursor = cursor;
+            }
+            const ret = await agent.getAuthorFeed(params);
+            posts = ret.data.feed;
+            cursor = ret.data.cursor;
+            if (!cursor) {
+                break;
+            }
+        } catch (error) {
+            console.error(error);
+            return;
+        }
+
+        // Add the posts to the database
+        for (let postData of posts) {
+            await upsertPost(argv.verbose, postData.post);
+        }
+    }
+}
+
+async function search(argv) {
+    // Construct a where clause for the search query
+    let whereClause = {
+        text: {
+            [Op.like]: `%${argv.query}%`
+        }
+    };
+
+    // If a username is provided, find the corresponding profile
+    if (argv.username) {
+        const profile = await Profile.findOne({
+            where: { handle: argv.username }
+        });
+
+        // If the profile exists, add profile_id to the where clause
+        if (profile) {
+            whereClause['profile_id'] = profile.id;
+        } else {
+            // If no such profile exists, return an empty array
+            console.log(`No profile found for username ${username}`);
+            return;
+        }
+    }
+
+    // Execute the search query
+    const posts = await Post.findAll({
+        where: whereClause,
+        order: [['created_at', 'ASC']]
+    });
+
+    console.log(`Found ${posts.length}\n`);
+
+    for (let post of posts) {
+        await displayPost(post);
+    }
+}
+
+async function readPosts(argv) {
+    const profile = await Profile.findOne({ where: { handle: argv.username } });
+    const posts = await Post.findAll({
+        where: { profile_id: profile.id },
+        order: [['created_at', 'ASC']]
+    });
+
+    console.log(`Found ${posts.length}\n`);
+
+    for (let post of posts) {
+        await displayPost(post);
+    }
+}
+
+async function fetchAllProfiles(argv) {
+    let ret;
+    let retryCount;
+
+    // First, run sync.listRepos to get all of the DIDs
+    let repo_dids = [];
+    let cursor = null;
+    let count = 0;
+    while (true) {
+        let params = { limit: 1000 };
+        if (cursor) {
+            params.cursor = cursor;
+        }
+        retryCount = 0;
+        while (retryCount < 3) {
+            try {
+                ret = await agent.com.atproto.sync.listRepos(params);
+                break;
+            } catch (error) {
+                if (error.response && error.response.status === 502) {
+                    retryCount++;
+                    console.log(`Received 502 error. Retrying... (${retryCount}/3)`);
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                } else {
+                    throw error;
+                }
+            }
+        }
+        cursor = ret.data.cursor;
+        if (!cursor) {
+            break;
+        }
+
+        for (let repo of ret.data.repos) {
+            // Add repo.did to repo_dids if it's not already there
+            if (!repo_dids.includes(repo.did)) {
+                repo_dids.push(repo.did);
+                count++;
+                process.stdout.write(`Found ${count.toLocaleString()} repos ...\r`);
+            }
+        }
+    }
+    console.log(`Found ${count.toLocaleString()} repos`);
+
+    // Create a new progress bar for fetching profiles
+    let bar = new ProgressBar(':bar :current/:total (:percent) :etas', {
+        total: repo_dids.length,
+        width: 50,
+        complete: '=',
+        incomplete: '-'
+    });
+
+    // Fetch handles and profiles for all repo DIDs
+    console.log(`Loading profiles for ${repo_dids.length.toLocaleString()} repos ...`);
+    for (let repo_did of repo_dids) {
+        try {
+            // Check if a profile with the same DID already exists in the database
+            let existingProfile = await getProfileByDid(repo_did);
+            if (existingProfile) {
+                console.log(`Profile for repo DID ${repo_did} already exists in the database. Skipping...`);
+                continue;
+            }
+
+            // Get the handle for the repo DID
+            let ret = await agent.com.atproto.repo.describeRepo({ repo: repo_did });
+            let handle = ret.data.handle;
+
+            // Get the profile data for the handle
+            ret = await agent.getProfile({ actor: handle });
+            let profile = ret.data;
+
+            // Add the profile to the database
+            await upsertProfile(profile);
+
+            // Update the progress bar
+            bar.tick({ current: 1 });
+        } catch (error) {
+            console.error(`Error loading profile for repo DID ${repo_did}: ${error.message}`);
+            // Update the progress bar even if there's an error
+            bar.tick({ current: 1 });
+        }
+    }
+}
+
 (async () => {
     try {
         await agent.login({
@@ -130,209 +365,30 @@ async function displayPost(post) {
         process.exit(1);
     }
 
-    yargs(hideBin(process.argv))
-        // List profiles
-        .command('list-profiles', 'List profiles', {}, async function () {
-            const profiles = await Profile.findAll();
-            for (let profile of profiles) {
-                console.log(`${profile.handle} (${profile.display_name})`);
-            }
-        })
-
-        .boolean('no_posts')
-        .boolean('verbose')
-        .boolean('connections')
-        // Fetch a profile
-        .command('fetch [username]', 'Fetch a profile', {
-            no_posts: {
-                default: false
-            },
-            connections: {
-                default: false
-            }
-        }, async function (argv) {
-            console.log(`Loading profile: ${argv.username}`);
-            let profileData = null;
-
-            // Load the profile from the API
-            try {
-                const ret = await agent.getProfile({ actor: argv.username });
-                profileData = ret.data;
-            } catch (error) {
-                console.error(`Error: Failed to fetch user ${argv.username}`);
-                return;
-            }
-
-            // Add the profile to the database
-            let profile = await upsertProfile(profileData);
-
-            if (argv.verbose) {
-                console.log(profile.dataValues);
-            }
-
-            if (argv.connections) {
-                const followsRes = await agent.getFollows({ actor: argv.username });
-                const followersRes = await agent.getFollowers({ actor: argv.username });
-
-                const followDIDs = [];
-                for (let i = 0; i < followsRes.data.follows.length; i++) {
-                    const f = followsRes.data.follows[i];
-                    if (argv.verbose) {
-                        console.log(f);
-                    }
-                    await upsertProfile(f);
-                    followDIDs.push(f.did);
+    try {
+        yargs(hideBin(process.argv))
+            .command('list-profiles', 'List profiles', {}, listProfiles)
+            .boolean('no_posts')
+            .boolean('verbose')
+            .boolean('connections')
+            .command('fetch [username]', 'Fetch a profile', {
+                no_posts: { default: false },
+                connections: { default: false }
+            }, fetchProfile)
+            .command('search [query]', 'Search', {
+                username: {
+                    alias: 'u',
+                    describe: 'The username to search',
+                    type: 'string'
                 }
-
-                const followerDIDs = [];
-                for (let i = 0; i < followersRes.data.followers.length; i++) {
-                    const f = followersRes.data.followers[i];
-                    if (argv.verbose) {
-                        console.log(f);
-                    }
-                    await upsertProfile(f);
-                    followerDIDs.push(f.did);
-                }
-
-            }
-
-            // Load all of the profile's posts
-            let posts = [];
-            let cursor = null;
-            while (!argv.no_posts && true) {
-                try {
-                    // Make the API request
-                    let params = { actor: profile.handle, limit: 100 }
-                    if (cursor) {
-                        params.cursor = cursor;
-                    }
-                    const ret = await agent.getAuthorFeed(params);
-                    posts = ret.data.feed;
-                    cursor = ret.data.cursor;
-                    if (!cursor) {
-                        break;
-                    }
-                } catch (error) {
-                    console.error(error);
-                    return;
-                }
-
-                // Add the posts to the database
-                for (let postData of posts) {
-                    await upsertPost(argv.verbose, postData.post);
-                }
-            }
-        })
-
-        // Search for posts
-        .command('search [query]', 'Search', {
-            username: {
-                alias: 'u',
-                describe: 'The username to search',
-                type: 'string'
-            }
-        }, async function (argv) {
-            // Construct a where clause for the search query
-            let whereClause = {
-                text: {
-                    [Op.like]: `%${argv.query}%`
-                }
-            };
-
-            // If a username is provided, find the corresponding profile
-            if (argv.username) {
-                const profile = await Profile.findOne({
-                    where: { handle: argv.username }
-                });
-
-                // If the profile exists, add profile_id to the where clause
-                if (profile) {
-                    whereClause['profile_id'] = profile.id;
-                } else {
-                    // If no such profile exists, return an empty array
-                    console.log(`No profile found for username ${username}`);
-                    return;
-                }
-            }
-
-            // Execute the search query
-            const posts = await Post.findAll({
-                where: whereClause,
-                order: [['created_at', 'ASC']]
-            });
-
-            console.log(`Found ${posts.length}\n`);
-
-            for (let post of posts) {
-                await displayPost(post);
-            }
-        })
-
-        // Read posts from a user sequentially
-        .command('read-posts [username]', 'Read posts sequentially', {}, async function (argv) {
-            const profile = await Profile.findOne({ where: { handle: argv.username } });
-            const posts = await Post.findAll({
-                where: { profile_id: profile.id },
-                order: [['created_at', 'ASC']]
-            });
-
-            console.log(`Found ${posts.length}\n`);
-
-            for (let post of posts) {
-                await displayPost(post);
-            }
-        })
-
-        // Fetch all profiles
-        .command('fetch-all', 'Fetch all profiles', {}, async function (argv) {
-            let ret;
-
-            // First, run sync.listRepos to get all of the DIDs
-            let repo_dids = [];
-            let cursor = null;
-            while (true) {
-                let params = { limit: 1000 };
-                if (cursor) {
-                    params.cursor = cursor;
-                }
-                let ret = await agent.com.atproto.sync.listRepos(params);
-                cursor = ret.data.cursor;
-                if (!cursor) {
-                    break;
-                }
-
-                for (let repo of ret.data.repos) {
-                    // Add repo.did to repo_dids if it's not already there
-                    if (!repo_dids.includes(repo.did))
-                        repo_dids.push(repo.did);
-                }
-                console.log("Found " + repo_dids.length + " repos ...");
-            }
-            console.log("Found " + repo_dids.length + " repos");
-
-            // Create a new progress bar for fetching handles
-            let bar = new ProgressBar(':bar :current/:total', { total: repo_dids.length });
-
-            // Next, get user handles for all repos based on their DIDs
-            let handles = [];
-            for (let repo_did of repo_dids) {
-                ret = await agent.com.atproto.repo.describeRepo({ repo: repo_did });
-                handles.push(ret.data.handle);
-                bar.tick(); // Update the progress bar
-            }
-
-            // Create a new progress bar for fetching profiles
-            bar = new ProgressBar(':bar :current/:total', { total: handles.length });
-
-            // Finally, get the profiles for all handles
-            for (let handle of handles) {
-                ret = await agent.getProfile({ actor: handle });
-                let profile = await upsertProfile(ret.data);
-                bar.tick(); // Update the progress bar
-            }
-        })
-
-        .demandCommand(1, 'You need at least one command before moving on')
-        .help()
-        .argv;
+            }, search)
+            .command('read-posts [username]', 'Read posts sequentially', {}, readPosts)
+            .command('fetch-all', 'Fetch all profiles', {}, fetchAllProfiles)
+            .demandCommand(1, 'You need at least one command before moving on')
+            .help()
+            .argv;
+    } catch (error) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+    }
 })();
