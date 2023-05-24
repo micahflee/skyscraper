@@ -4,6 +4,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
 import ProgressBar from 'progress';
+import humanizeDuration from 'humanize-duration';
 
 import pkg from '@atproto/api';
 const { BskyAgent } = pkg;
@@ -315,11 +316,16 @@ async function fetchAllProfiles(argv) {
     console.log(`Found ${count.toLocaleString()} repos`);
 
     // Create a new progress bar for fetching profiles
-    let bar = new ProgressBar(':bar :current/:total (:percent) :etas', {
+    let bar = new ProgressBar(':bar :current/:total (:percent) ETA: :etas ', {
         total: repo_dids.length,
         width: 50,
         complete: '=',
-        incomplete: '-'
+        incomplete: '-',
+        renderThrottle: 100,
+        format: (options, params, payload) => {
+            let eta = humanizeDuration(params.eta * 1000, { round: true });
+            return `${params.bar} ${params.value}/${params.total} (${params.percent}%) ETA: ${eta} `;
+        }
     });
 
     // Fetch handles and profiles for all repo DIDs
@@ -329,7 +335,9 @@ async function fetchAllProfiles(argv) {
             // Check if a profile with the same DID already exists in the database
             let existingProfile = await getProfileByDid(repo_did);
             if (existingProfile) {
-                console.log(`Profile for repo DID ${repo_did} already exists in the database. Skipping...`);
+                console.log(`Profile for ${existingProfile.handle} already exists in the database. Skipping...`);
+                // Update the progress bar
+                bar.tick({ current: 1 });
                 continue;
             }
 
